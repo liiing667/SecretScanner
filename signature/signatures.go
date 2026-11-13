@@ -2,6 +2,7 @@ package signature
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"math"
 	"regexp"
@@ -61,14 +62,17 @@ func MatchPatternSignatures(contents io.ReadSeeker, path string, filename string
 		}
 
 		for _, signature := range patternSignatureMap[part] {
-			matchingStr.Seek(0, io.SeekStart)
+			if _, err := matchingStr.Seek(0, io.SeekStart); err != nil {
+				return tempSecretsFound, fmt.Errorf("seek %s part of %q: %w", part, path, err)
+			}
 			indexes := signature.CompiledRegex.FindReaderIndex(bufio.NewReader(matchingStr))
 			if indexes != nil {
 				match := make([]byte, indexes[1]-indexes[0])
-				matchingStr.Seek(int64(indexes[0]), io.SeekStart)
-				_, err := matchingStr.Read(match)
-				if err != nil {
-					log.Info().Err(err).Msg("content read error")
+				if _, err := matchingStr.Seek(int64(indexes[0]), io.SeekStart); err != nil {
+					return tempSecretsFound, fmt.Errorf("seek %s part of %q: %w", part, path, err)
+				}
+				if _, err := io.ReadFull(matchingStr, match); err != nil {
+					return tempSecretsFound, fmt.Errorf("read %s part of %q: %w", part, path, err)
 				}
 				matchStr := string(match)
 				tempSecretsFound = append(tempSecretsFound, output.SecretFound{
@@ -116,10 +120,11 @@ func MatchSimpleSignatures(contents io.ReadSeeker, path string, filename string,
 		indexes := matchRegexpMap[part].FindReaderIndex(bufio.NewReader(matchingStr))
 		if indexes != nil {
 			match := make([]byte, indexes[1]-indexes[0])
-			matchingStr.Seek(int64(indexes[0]), io.SeekStart)
-			_, err := matchingStr.Read(match)
-			if err != nil {
-				log.Info().Err(err).Msg("content read error")
+			if _, err := matchingStr.Seek(int64(indexes[0]), io.SeekStart); err != nil {
+				return tempSecretsFound, fmt.Errorf("seek %s part of %q: %w", part, path, err)
+			}
+			if _, err := io.ReadFull(matchingStr, match); err != nil {
+				return tempSecretsFound, fmt.Errorf("read %s part of %q: %w", part, path, err)
 			}
 			matchStr := string(match)
 			signature := matchSignatureMap[part][matchStr]
